@@ -22,14 +22,15 @@ python main.py
 │    Input:     1,234            │
 │    Output:      567            │
 │    Total:     1,801            │
-│    Cost:     $0.001234         │
-│  ─────────────────────────     │
+│    Cost:     ¥0.001234         │
+│  ── Models ──                  │
+│    V4-Flash    1,000  ¥0.0008  │
+│    V4-Pro        801  ¥0.0004  │
 │  ── Session ──                 │
-│    1,801 tot (in: 1,234  out: 567)
-│    $0.001234                   │
-│  ─────────────────────────     │
+│    1,801 tot(in:1,234 out:567) │
+│    ¥0.001234                   │
 │  ── Last ──                    │
-│    +200 in  +80 out  $0.000082 │
+│    V4-Flash +200in +80out ¥0.02│
 └─────────────────────────────────┘
 ```
 
@@ -104,12 +105,12 @@ deepseek-monitor/
 
 ## Pricing
 
-Default pricing (DeepSeek official rates, USD per million tokens):
+Default pricing (DeepSeek official USD prices, converted to RMB at ~7.2, per million tokens):
 
 | Model | Input | Output |
 |-------|-------|--------|
-| deepseek-chat / deepseek-v3 | $0.27 | $1.10 |
-| deepseek-reasoner / deepseek-r1 | $0.55 | $2.19 |
+| DeepSeek-V4-Flash | ¥1.00 | ¥2.00 |
+| DeepSeek-V4-Pro | ¥3.10 | ¥6.30 |
 
 Customize in `config.py` under the `PRICING` dictionary.
 

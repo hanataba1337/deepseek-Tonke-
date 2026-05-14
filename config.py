@@ -1,19 +1,32 @@
 """Configuration for DeepSeek Token Monitor."""
 
-# DeepSeek pricing per 1M tokens (USD)
-# https://api-docs.deepseek.com/quick_start/pricing
+# DeepSeek pricing per 1M tokens (RMB ¥)
+# Based on official pricing: https://api-docs.deepseek.com/quick_start/pricing
+# USD → RMB exchange rate: ~7.2
 PRICING = {
-    "deepseek-chat": {"input": 0.27, "output": 1.10},
-    "deepseek-reasoner": {"input": 0.55, "output": 2.19},
-    "deepseek-v3": {"input": 0.27, "output": 1.10},
-    "deepseek-r1": {"input": 0.55, "output": 2.19},
-    "default": {"input": 0.27, "output": 1.10},
+    "deepseek-v4-flash":   {"input": 1.0, "output": 2.0},
+    "deepseek-v4-pro":     {"input": 3.1, "output": 6.3},
+    "deepseek-chat":       {"input": 1.0, "output": 2.0},
+    "deepseek-reasoner":   {"input": 3.1, "output": 6.3},
+    "deepseek-v3":         {"input": 1.0, "output": 2.0},
+    "deepseek-r1":         {"input": 3.1, "output": 6.3},
+    "default":             {"input": 1.0, "output": 2.0},
+}
+
+# Model display names (friendly labels)
+MODEL_LABELS = {
+    "deepseek-v4-flash": "V4-Flash",
+    "deepseek-v4-pro": "V4-Pro",
+    "deepseek-chat": "Chat",
+    "deepseek-reasoner": "Reasoner",
+    "deepseek-v3": "V3",
+    "deepseek-r1": "R1",
 }
 
 # Overlay window settings
 OVERLAY_OPACITY = 0.85
-OVERLAY_WIDTH = 280
-OVERLAY_HEIGHT = 340
+OVERLAY_WIDTH = 300
+OVERLAY_HEIGHT = 390
 OVERLAY_BG_COLOR = "#1a1a2e"
 OVERLAY_FG_COLOR = "#e0e0e0"
 OVERLAY_ACCENT_COLOR = "#4fc3f7"
