@@ -1,20 +1,19 @@
 """DeepSeek Token Monitor - Desktop overlay for real-time token usage.
 
-Reads token usage directly from CC-Switch's database.
-No proxy needed - just install and run.
+直接从 CC-Switch 数据库读取用量数据，桌面悬浮窗实时显示。
+无需代理、无需改配置。
 
 Usage:
+  pip install -r requirements.txt
   python main.py
 """
-import sys
-
 from overlay import TokenOverlay
 
 
 def main():
-    print("  DeepSeek Token Monitor")
-    print("  Reading usage from CC-Switch database...")
-    print("  Close: click × on the overlay\n")
+    print("  DeepSeek 用量监控")
+    print("  从 CC-Switch 读取用量数据...")
+    print("  点击悬浮窗 × 退出\n")
 
     overlay = TokenOverlay()
     overlay.run()
