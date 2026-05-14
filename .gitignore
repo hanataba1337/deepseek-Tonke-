@@ -1,6 +1,3 @@
-# API Key file (contains sensitive credentials)
-start.bat
-
 # Python
 __pycache__/
 *.pyc
@@ -9,9 +6,6 @@ __pycache__/
 *.egg
 dist/
 build/
-
-# Database (auto-generated)
-*.db
 
 # Environment
 .env

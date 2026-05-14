@@ -3,13 +3,11 @@
 > 💸 **你的每一分钱都花在哪了？让它在桌面上直接告诉你。**
 
 实时监控 DeepSeek API Token 用量的桌面悬浮窗工具。  
-透明代理 → 自动捕获 → 桌面实时显示。**改一行代码，打开即用。**
+**直接读取 CC-Switch 内部数据库**，零侵入，无需改任何配置。
 
 ```bash
-# 改之前
-base_url="https://api.deepseek.com/v1"
-# 改之后
-base_url="http://127.0.0.1:8787/v1"
+pip install -r requirements.txt
+python main.py
 # 搞定，看桌面。
 ```
 
@@ -18,7 +16,7 @@ base_url="http://127.0.0.1:8787/v1"
 ```
 ┌─────────────────────────────────┐
 │  DeepSeek Monitor          ×    │
-│  ● Proxy Running               │
+│  ● Reading CC-Switch           │
 │  ─────────────────────────     │
 │  ── Today ──                   │
 │    Input:     1,234            │
@@ -37,12 +35,10 @@ base_url="http://127.0.0.1:8787/v1"
 
 ## 功能特性
 
-- **透明代理** — 本地启动代理服务器，透明转发 API 请求并自动捕获 token 用量
+- **零侵入** — 直接从 CC-Switch 数据库读取数据，无需改任何代码或配置
 - **实时悬浮窗** — 桌面常驻半透明窗口，每 2 秒自动刷新
 - **详细统计** — 输入/输出 Token 数、费用估算、今日累计、会话累计
-- **持久化存储** — SQLite 存储历史用量，跨会话保留
-- **零侵入** — 只需改一行 `base_url`，无需修改业务代码
-- **流式支持** — 完整支持 streaming 和非 streaming 请求
+- **自动工作** — 只要你在用 CC-Switch 调 DeepSeek，打开就用
 - **可拖拽** — 鼠标拖拽标题栏任意摆放
 
 ## 快速开始
@@ -53,22 +49,7 @@ base_url="http://127.0.0.1:8787/v1"
 pip install -r requirements.txt
 ```
 
-### 2. 设置 API Key
-
-**方式一：环境变量（推荐）**
-```bash
-set DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-**方式二：编辑 start.bat**
-```batch
-set DEEPSEEK_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-> ⚠️ `start.bat` 已加入 `.gitignore`，不会误提交 API Key。
-> 可参考 `start.bat.example` 创建自己的启动脚本。
-
-### 3. 启动
+### 2. 启动
 
 ```bash
 python main.py
@@ -76,50 +57,30 @@ python main.py
 
 或者双击 `start.bat`。
 
-启动后终端会显示：
+> **前置条件**：需要已安装 [CC-Switch](https://cc-switch.com) 并配置了 DeepSeek 提供商。
+
+## 工作原理
+
 ```
-DeepSeek Monitor is running!
-Proxy:    http://127.0.0.1:8787
-Overlay:  desktop widget active
-```
-
-桌面上会出现深色半透明悬浮窗。
-
-### 4. 修改应用代码
-
-将你的 DeepSeek API 地址指向本地代理：
-
-```python
-# 修改前
-client = OpenAI(
-    api_key="sk-xxx",
-    base_url="https://api.deepseek.com/v1"
-)
-
-# 修改后
-client = OpenAI(
-    api_key="sk-xxx",           # 这里还是填真实的 API Key
-    base_url="http://127.0.0.1:8787/v1"  # 代理地址
-)
+你发消息 → CC-Switch(15721端口) → DeepSeek 官方
+                ↓
+      CC-Switch 自动记录每次请求的 token 数到 SQLite 数据库
+                ↓
+      DeepSeek Monitor 读取该数据库并在悬浮窗显示
 ```
 
-**通过环境变量配置（兼容 openai 库）：**
-```bash
-set OPENAI_BASE_URL=http://127.0.0.1:8787/v1
-```
+不需要代理，不需要修改任何配置，CC-Switch 本身就已经记录了所有用量数据。
 
 ## 项目结构
 
 ```
 deepseek-monitor/
-├── main.py              # 主入口（启动代理 + 悬浮窗）
-├── proxy.py             # 本地代理服务器（拦截 API 并统计用量）
-├── tracker.py           # 用量追踪 + SQLite 持久化存储
+├── main.py              # 主入口
+├── tracker.py           # 读取 CC-Switch 数据库获取用量
 ├── overlay.py           # 桌面悬浮窗 UI（tkinter 透明窗口）
-├── config.py            # 全局配置（API Key、价格、窗口样式等）
+├── config.py            # 配置（价格、窗口样式等）
 ├── requirements.txt     # Python 依赖
-├── start.bat            # Windows 一键启动脚本（已 gitignore）
-├── start.bat.example    # 启动脚本模板（不含 Key）
+├── start.bat            # 一键启动脚本
 └── .gitignore           # Git 忽略规则
 ```
 
@@ -134,7 +95,7 @@ deepseek-monitor/
 
 | 区域 | 数据 | 说明 |
 |------|------|------|
-| ● Proxy Running | 状态灯 | 绿色=运行中 |
+| ● Reading CC-Switch | 状态灯 | 绿色=运行中 |
 | ── Today ── | Input / Output / Total | 今日累计 Token 用量 |
 | | Cost | 今日累计费用（USD） |
 | ── Session ── | Token 明细 | 本次启动以来的用量 |
@@ -152,25 +113,27 @@ deepseek-monitor/
 
 可在 `config.py` 的 `PRICING` 字典中自定义。
 
-## 数据存储
+## 数据来源
 
-- **位置**: `~/.deepseek-monitor/usage.db`
-- **内容**: 每次 API 调用的时间、模型、Token 数、费用
-- **保留**: 自动持久化，不会丢失
+数据来自 **CC-Switch** 的 `proxy_request_logs` 表，位于：
+
+```
+%USERPROFILE%\.cc-switch\cc-switch.db
+```
 
 ## 常见问题
 
-**Q: 需要改很多代码吗？**
-A: 只需改一行 `base_url`，将 `https://api.deepseek.com/v1` 改为 `http://127.0.0.1:8787/v1`。
+**Q: 需要安装 CC-Switch 吗？**
+A: 是的，本工具依赖 CC-Switch 记录的用量数据。如果你不用 CC-Switch，可以用 proxy 模式（旧版本）。
 
-**Q: 会影响 API 响应速度吗？**
-A: 代理只做转发和计数，几乎没有额外延迟（微秒级）。流式响应同样支持。
+**Q: 会影响网络性能吗？**
+A: 完全不会。本工具只读数据库，不代理任何网络请求。
 
-**Q: 只支持 DeepSeek 吗？**
-A: 目前专为 DeepSeek API 设计，但代码结构通用，修改 `config.py` 中的 `DEEPSEEK_BASE_URL` 和 `PRICING` 即可适配其他 OpenAI 兼容 API。
+**Q: 支持其他 API 提供商吗？**
+A: 目前支持 DeepSeek（通过 CC-Switch），可以扩展 `tracker.py` 支持其他提供商。
 
 **Q: tkinter 窗口看起来简陋？**
-A: 是的，tkinter 就是原生风格。如果需要更现代的外观，可以改用 PyQt/PySide 重写 `overlay.py`。
+A: tkinter 就是原生风格，但轻量无依赖。可以用 PyQt 重写 `overlay.py` 获得更现代的外观。
 
 ## 许可证
 

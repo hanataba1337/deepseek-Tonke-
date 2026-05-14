@@ -1,2 +1,2 @@
-flask>=3.0
-requests>=2.31
+# No external dependencies required.
+# Uses only Python standard library: tkinter, sqlite3, threading, time, datetime.

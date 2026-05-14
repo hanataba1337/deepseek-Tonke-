@@ -62,7 +62,7 @@ class TokenOverlay:
                                     bg=OVERLAY_BG_COLOR, highlightthickness=0)
         self.status_dot.pack(side=tk.LEFT, padx=(0, 6))
         self._dot = self.status_dot.create_oval(1, 1, 9, 9, fill="#4caf50", outline="")
-        tk.Label(status_frame, text="Proxy Running", font=("Consolas", 8),
+        tk.Label(status_frame, text="Reading CC-Switch", font=("Consolas", 8),
                  bg=OVERLAY_BG_COLOR, fg="#4caf50").pack(side=tk.LEFT)
 
         self._add_separator(content)
