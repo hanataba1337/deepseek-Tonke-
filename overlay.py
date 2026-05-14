@@ -172,7 +172,7 @@ class TokenOverlay:
             last = tracker.get_last_usage()
             if last:
                 self.last_label.config(
-                    text=f"  {last['label']}  +{last['prompt']}入  +{last['completion']}出  ¥{last['cost']:.6f}")
+                    text=f"  {last['label']}  +{self._fmt(last['prompt'])}入  +{self._fmt(last['completion'])}出  ¥{last['cost']:.4f}")
                 self.last_label.config(fg=OVERLAY_FG_COLOR)
 
             self.debug_label.config(
