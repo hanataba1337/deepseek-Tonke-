@@ -1,8 +1,17 @@
 # DeepSeek Token Monitor 🖥️📊
 
-实时监控 DeepSeek API Token 用量的桌面悬浮窗工具。
+> 💸 **你的每一分钱都花在哪了？让它在桌面上直接告诉你。**
 
-透明代理 → 自动捕获 → 悬浮窗显示。无需手动查询，打开即用。
+实时监控 DeepSeek API Token 用量的桌面悬浮窗工具。  
+透明代理 → 自动捕获 → 桌面实时显示。**改一行代码，打开即用。**
+
+```bash
+# 改之前
+base_url="https://api.deepseek.com/v1"
+# 改之后
+base_url="http://127.0.0.1:8787/v1"
+# 搞定，看桌面。
+```
 
 ## 效果预览
 
