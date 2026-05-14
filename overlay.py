@@ -129,6 +129,9 @@ class TokenOverlay:
         self.last_label = tk.Label(content, text=LBL_WAITING, font=OVERLAY_FONT,
                                    bg=OVERLAY_BG_COLOR, fg="#888")
         self.last_label.pack(anchor=tk.W)
+        self.last_cost_label = tk.Label(content, text="", font=OVERLAY_FONT,
+                                        bg=OVERLAY_BG_COLOR, fg="#ffd54f")
+        self.last_cost_label.pack(anchor=tk.W)
 
         self._add_sep(content)
 
@@ -172,8 +175,9 @@ class TokenOverlay:
             last = tracker.get_last_usage()
             if last:
                 self.last_label.config(
-                    text=f"  {last['label']}  +{self._fmt(last['prompt'])}入  +{self._fmt(last['completion'])}出  ¥{last['cost']:.4f}")
+                    text=f"  {last['label']}  +{last['prompt']:,}入  +{last['completion']:,}出")
                 self.last_label.config(fg=OVERLAY_FG_COLOR)
+                self.last_cost_label.config(text=f"  ¥{last['cost']:.4f}")
 
             self.debug_label.config(
                 text=f"  请求: {tracker.get_request_count()}  状态: {tracker.get_last_status()}")
