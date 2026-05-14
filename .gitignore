@@ -1,0 +1,19 @@
+# API Key file (contains sensitive credentials)
+start.bat
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+
+# Database (auto-generated)
+*.db
+
+# Environment
+.env
+.venv
+venv/
