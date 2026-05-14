@@ -28,7 +28,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 # Overlay window settings
 OVERLAY_OPACITY = 0.85
 OVERLAY_WIDTH = 280
-OVERLAY_HEIGHT = 320
+OVERLAY_HEIGHT = 340
 OVERLAY_BG_COLOR = "#1a1a2e"
 OVERLAY_FG_COLOR = "#e0e0e0"
 OVERLAY_ACCENT_COLOR = "#4fc3f7"

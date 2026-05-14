@@ -113,6 +113,12 @@ class TokenOverlay:
                                    bg=OVERLAY_BG_COLOR, fg="#888")
         self.last_label.pack(anchor=tk.W)
 
+        # ─── Debug ───
+        self._add_separator(content)
+        self.debug_label = tk.Label(content, text="", font=("Consolas", 8),
+                                     bg=OVERLAY_BG_COLOR, fg="#666")
+        self.debug_label.pack(anchor=tk.W)
+
     def _add_separator(self, parent):
         sep = tk.Frame(parent, height=1, bg="#2a2a4a")
         sep.pack(fill=tk.X, pady=4)
@@ -146,6 +152,11 @@ class TokenOverlay:
                 self.last_label.config(
                     text=f"  +{last['prompt']} in  +{last['completion']} out  ${last['cost']:.6f}")
                 self.last_label.config(fg=OVERLAY_FG_COLOR)
+
+            # Debug info
+            req_count = tracker.get_request_count()
+            last_status = tracker.get_last_status()
+            self.debug_label.config(text=f"  reqs: {req_count}  status: {last_status}")
         except Exception:
             pass
 

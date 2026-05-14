@@ -19,6 +19,8 @@ class UsageTracker:
         self._session_tokens = {"prompt": 0, "completion": 0, "total": 0}
         self._session_cost = 0.0
         self._last_usage = None
+        self._request_count = 0
+        self._last_status = "no requests yet"
 
     def _init_db(self):
         self._conn.execute("""
@@ -132,12 +134,27 @@ class UsageTracker:
             for r in rows
         ]
 
+    def increment_requests(self, status: str = "OK"):
+        with self._lock:
+            self._request_count += 1
+            self._last_status = status
+
+    def get_request_count(self) -> int:
+        with self._lock:
+            return self._request_count
+
+    def get_last_status(self) -> str:
+        with self._lock:
+            return self._last_status
+
     def reset_session(self):
         """Reset session counters."""
         with self._lock:
             self._session_tokens = {"prompt": 0, "completion": 0, "total": 0}
             self._session_cost = 0.0
             self._last_usage = None
+            self._request_count = 0
+            self._last_status = "reset"
 
 
 # Global singleton

@@ -35,6 +35,7 @@ def chat_completions():
     stream = req_json.get("stream", False)
 
     target_url = urljoin(DEEPSEEK_BASE_URL, "/v1/chat/completions")
+    log.info("-> %s %s (stream=%s)", flask.request.method, flask.request.path, stream)
 
     if stream:
         return _proxy_stream(target_url, body)
@@ -81,7 +82,11 @@ def _proxy_normal(target_url: str, body: bytes):
         )
     except requests.RequestException as e:
         log.error("Proxy request failed: %s", e)
+        get_tracker().increment_requests(f"error: {e}")
         return {"error": str(e)}, 502
+
+    get_tracker().increment_requests(f"HTTP {resp.status_code}")
+    log.info("<- upstream %s", resp.status_code)
 
     # Extract usage info from response
     try:
@@ -95,8 +100,10 @@ def _proxy_normal(target_url: str, body: bytes):
             tracker = get_tracker()
             tracker.record_usage(prompt_tokens, completion_tokens, model)
             log.info("Recorded: +%d in +%d out (%s)", prompt_tokens, completion_tokens, model)
+        else:
+            log.info("Response has no usage field. Full response keys: %s", list(data.keys()))
     except (ValueError, KeyError) as e:
-        log.warning("Could not parse usage from response: %s", e)
+        log.warning("Could not parse usage from response: %s  body=%s", e, resp.text[:200])
 
     return (resp.content, resp.status_code, dict(resp.headers))
 
@@ -113,7 +120,11 @@ def _proxy_stream(target_url: str, body: bytes):
         )
     except requests.RequestException as e:
         log.error("Stream proxy request failed: %s", e)
+        get_tracker().increment_requests(f"error: {e}")
         return {"error": str(e)}, 502
+
+    get_tracker().increment_requests(f"HTTP {upstream.status_code}")
+    log.info("<- upstream stream %s", upstream.status_code)
 
     def generate():
         prompt_tokens = 0
