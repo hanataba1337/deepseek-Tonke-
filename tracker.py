@@ -1,194 +1,67 @@
-"""Token usage tracker — supports DeepSeek API (preferred) and CC-Switch DB (fallback)."""
-import sqlite3
-import time
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
-
-from config import PRICING, MODEL_LABELS
-from deepseek_api import get_today_cost as _api_today
-from deepseek_api import get_monthly_cost as _api_month
-from deepseek_api import available as _api_avail
-
-CC_SWITCH_DB = str(Path.home() / ".cc-switch" / "cc-switch.db")
-DEEPSEEK_PROVIDER_ID = "bb3cb8ec-eacc-4e7c-bbc6-fdadbeb231c7"
-
-# Asia/Shanghai timezone (UTC+8) — DeepSeek billing uses Beijing time
-_TZ = timezone(timedelta(hours=8))
+"""Usage tracker — reads from DeepSeek API (balance tracking)."""
+from deepseek_api import (
+    get_balance, available, last_error, verify,
+    save_snapshot, get_today_cost, get_month_cost,
+)
 
 
 class UsageTracker:
-    """Reads token usage from CC-Switch's proxy_request_logs."""
-
     def __init__(self):
-        self._session_start = int(time.time())
+        self._balance: float | None = None
+        self._today_cost: float = 0.0
+        self._month_cost: float = 0.0
+        self._prev_balance: float | None = None
+        self._session_spent: float = 0.0  # balance drops within this session
+        self._refresh_balance()
 
-    def _query(self, sql, params=()):
-        conn = sqlite3.connect(CC_SWITCH_DB)
-        try:
-            return conn.execute(sql, params).fetchall()
-        finally:
-            conn.close()
+    def _refresh_balance(self):
+        bal = get_balance()
+        if bal is None:
+            return
+        self._prev_balance = self._balance
+        self._balance = bal
 
-    def _midnight_ts(self) -> int:
-        today = datetime.now(_TZ).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
-        return int(today.timestamp())
+        # Track session spending from balance drops
+        if self._prev_balance is not None and bal < self._prev_balance:
+            self._session_spent += self._prev_balance - bal
 
-    def _month_start_ts(self) -> int:
-        first = datetime.now(_TZ).replace(
-            day=1, hour=0, minute=0, second=0, microsecond=0
-        )
-        return int(first.timestamp())
+        # Update snapshots
+        save_snapshot(bal)
 
-    @staticmethod
-    def _cost(prompt: int, completion: int, model: str = "default") -> float:
-        pricing = PRICING.get(model, PRICING["default"])
-        return (prompt / 1_000_000 * pricing["input"] +
-                completion / 1_000_000 * pricing["output"])
+        # Get costs from snapshot comparison
+        self._today_cost = get_today_cost(bal)
+        self._month_cost = get_month_cost(bal)
+
+    def update(self):
+        """Call every refresh cycle to track balance changes."""
+        self._refresh_balance()
 
     def data_source(self) -> str:
-        return "DeepSeek API" if _api_avail() else "CC-Switch DB"
+        if self._balance is not None:
+            return f"API ¥{self._balance}"
+        err = last_error()
+        return f"API error" if err else "no key"
+
+    def ok(self) -> bool:
+        return self._balance is not None
 
     def get_today_usage(self) -> dict:
-        # Try API first (accurate cost)
-        api_cost = _api_today()
-        if api_cost is not None:
-            # Also get tokens from DB for display (may be partial)
-            breakdown = self.get_model_breakdown()
-            prompt = sum(m["prompt"] for m in breakdown)
-            completion = sum(m["completion"] for m in breakdown)
-            return {"prompt": prompt, "completion": completion,
-                    "total": prompt + completion, "cost": api_cost}
-        # Fallback: pure DB estimate
-        breakdown = self.get_model_breakdown()
-        prompt = sum(m["prompt"] for m in breakdown)
-        completion = sum(m["completion"] for m in breakdown)
-        cost = sum(m["cost"] for m in breakdown)
-        return {"prompt": prompt, "completion": completion,
-                "total": prompt + completion, "cost": round(cost, 6)}
-
-    def get_model_breakdown(self) -> list:
-        """Get today's usage grouped by model."""
-        ts = self._midnight_ts()
-        rows = self._query("""
-            SELECT COALESCE(model,'unknown'), COALESCE(SUM(input_tokens),0),
-                   COALESCE(SUM(output_tokens),0)
-            FROM proxy_request_logs
-            WHERE provider_id = ? AND created_at >= ? AND data_source = 'proxy'
-            GROUP BY model
-            ORDER BY SUM(input_tokens + output_tokens) DESC
-        """, (DEEPSEEK_PROVIDER_ID, ts))
-        result = []
-        for r in rows:
-            m, pin, pout = r
-            label = MODEL_LABELS.get(m, m) if m else "unknown"
-            cost = round(self._cost(pin, pout, m), 6)
-            result.append({"model": m, "label": label,
-                           "prompt": pin, "completion": pout,
-                           "total": pin + pout, "cost": cost})
-        return result
-
-    def get_active_models(self) -> list:
-        """List models used today with their prompts/outputs."""
-        ts = self._midnight_ts()
-        rows = self._query("""
-            SELECT COALESCE(model,'unknown'), COUNT(*)
-            FROM proxy_request_logs
-            WHERE provider_id = ? AND created_at >= ? AND data_source = 'proxy'
-            GROUP BY model
-            ORDER BY COUNT(*) DESC
-        """, (DEEPSEEK_PROVIDER_ID, ts))
-        return [{"model": r[0], "label": MODEL_LABELS.get(r[0], r[0]), "count": r[1]} for r in rows]
-
-    def get_session_usage(self) -> dict:
-        rows = self._query("""
-            SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0)
-            FROM proxy_request_logs
-            WHERE provider_id = ? AND created_at >= ? AND data_source = 'proxy'
-        """, (DEEPSEEK_PROVIDER_ID, self._session_start))
-        prompt = rows[0][0]
-        completion = rows[0][1]
-        return {"prompt": prompt, "completion": completion, "total": prompt + completion}
-
-    def get_session_cost(self) -> float:
-        """Sum per-model costs for the session (accurate for mixed model usage)."""
-        ts = self._session_start
-        rows = self._query("""
-            SELECT COALESCE(model,'default'), COALESCE(SUM(input_tokens),0),
-                   COALESCE(SUM(output_tokens),0)
-            FROM proxy_request_logs
-            WHERE provider_id = ? AND created_at >= ? AND data_source = 'proxy'
-            GROUP BY model
-        """, (DEEPSEEK_PROVIDER_ID, ts))
-        cost = sum(self._cost(pin, pout, m) for m, pin, pout in rows)
-        return round(cost, 6)
+        return {"cost": self._today_cost}
 
     def get_monthly_cost(self) -> float:
-        api_cost = _api_month()
-        if api_cost is not None:
-            return api_cost
-        ts = self._month_start_ts()
-        rows = self._query("""
-            SELECT COALESCE(model,'default'), COALESCE(SUM(input_tokens),0),
-                   COALESCE(SUM(output_tokens),0)
-            FROM proxy_request_logs
-            WHERE provider_id = ? AND created_at >= ? AND data_source = 'proxy'
-            GROUP BY model
-        """, (DEEPSEEK_PROVIDER_ID, ts))
-        cost = sum(self._cost(pin, pout, m) for m, pin, pout in rows)
-        return round(cost, 6)
+        return self._month_cost
 
-    def get_last_usage(self) -> dict | None:
-        rows = self._query("""
-            SELECT input_tokens, output_tokens, model, created_at
-            FROM proxy_request_logs
-            WHERE provider_id = ? AND data_source = 'proxy'
-            ORDER BY created_at DESC LIMIT 1
-        """, (DEEPSEEK_PROVIDER_ID,))
-        if not rows:
-            return None
-        prompt, completion, model, ts = rows[0]
-        m = model or "default"
-        return {
-            "prompt": prompt, "completion": completion,
-            "total": prompt + completion,
-            "cost": round(self._cost(prompt, completion, m), 6),
-            "model": model or "deepseek",
-            "label": MODEL_LABELS.get(m, m),
-            "timestamp": str(ts),
-        }
+    def get_balance(self) -> float | None:
+        return self._balance
 
-    def get_request_count(self) -> int:
-        rows = self._query("""
-            SELECT COUNT(*) FROM proxy_request_logs
-            WHERE provider_id = ? AND data_source = 'proxy'
-        """, (DEEPSEEK_PROVIDER_ID,))
-        return rows[0][0] if rows else 0
+    def get_session_spent(self) -> float:
+        return round(self._session_spent, 4)
 
-    def get_last_status(self) -> str:
-        rows = self._query("""
-            SELECT status_code, error_message
-            FROM proxy_request_logs
-            WHERE provider_id = ? AND data_source = 'proxy'
-            ORDER BY created_at DESC LIMIT 1
-        """, (DEEPSEEK_PROVIDER_ID,))
-        if not rows:
-            return "no requests yet"
-        code, err = rows[0]
-        if err:
-            return f"HTTP {code}: {err[:30]}"
-        return f"HTTP {code}"
+    def last_api_error(self) -> str | None:
+        return last_error()
 
-    def get_recent_requests(self, limit=10) -> list:
-        rows = self._query("""
-            SELECT created_at, model, input_tokens, output_tokens, status_code
-            FROM proxy_request_logs
-            WHERE provider_id = ? AND data_source = 'proxy'
-            ORDER BY created_at DESC LIMIT ?
-        """, (DEEPSEEK_PROVIDER_ID, limit))
-        return [{"timestamp": r[0], "model": r[1], "label": MODEL_LABELS.get(r[1] or "", r[1] or ""),
-                 "prompt": r[2], "completion": r[3], "status": r[4]} for r in rows]
+    def verify(self) -> str:
+        return verify()
 
 
 _tracker = None

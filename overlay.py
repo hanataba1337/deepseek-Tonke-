@@ -1,4 +1,4 @@
-"""Desktop overlay widget for real-time token usage display."""
+"""Desktop overlay — balance tracking mode."""
 import tkinter as tk
 
 from tracker import get_tracker
@@ -10,13 +10,6 @@ from config import (
 from settings import get as get_setting, save as save_settings
 
 LBL_TITLE = "  DeepSeek 用量监控"
-LBL_STATUS = "读取 CC-Switch"
-LBL_TODAY = "── 今日 ──"
-LBL_MODELS = "── 模型 ──"
-LBL_COST = "  费用:"
-LBL_INPUT = "  输入:"
-LBL_OUTPUT = "  输出:"
-LBL_TOTAL = "  总计:"
 
 
 class TokenOverlay:
@@ -65,32 +58,21 @@ class TokenOverlay:
                                      bg=OVERLAY_BG_COLOR, highlightthickness=0)
         self.status_dot.pack(side=tk.LEFT, padx=(0, 6))
         self._dot = self.status_dot.create_oval(1, 1, 9, 9, fill="#4caf50", outline="")
-        self.status_label = tk.Label(sf, text=LBL_STATUS, font=("Consolas", 8),
-                 bg=OVERLAY_BG_COLOR, fg="#4caf50")
+        self.status_label = tk.Label(sf, text="等待 API Key...", font=("Consolas", 8),
+                                      bg=OVERLAY_BG_COLOR, fg="#888")
         self.status_label.pack(side=tk.LEFT)
 
         self._sep(c)
 
         # ── today ──
-        tk.Label(c, text=LBL_TODAY, font=OVERLAY_FONT,
+        tk.Label(c, text="── 今日 ──", font=OVERLAY_FONT,
                  bg=OVERLAY_BG_COLOR, fg=OVERLAY_ACCENT_COLOR).pack(anchor=tk.W, pady=(4, 2))
 
-        self.today_labels = {}
-        for key, text in [("prompt", LBL_INPUT), ("completion", LBL_OUTPUT), ("total", LBL_TOTAL)]:
-            row = tk.Frame(c, bg=OVERLAY_BG_COLOR)
-            row.pack(fill=tk.X)
-            tk.Label(row, text=text, font=OVERLAY_FONT,
-                     bg=OVERLAY_BG_COLOR, fg="#aaa").pack(side=tk.LEFT)
-            lbl = tk.Label(row, text="0", font=OVERLAY_FONT,
-                           bg=OVERLAY_BG_COLOR, fg=OVERLAY_FG_COLOR)
-            lbl.pack(side=tk.RIGHT)
-            self.today_labels[key] = lbl
-
         cost_row = tk.Frame(c, bg=OVERLAY_BG_COLOR)
-        cost_row.pack(fill=tk.X, pady=(2, 0))
-        tk.Label(cost_row, text=LBL_COST, font=OVERLAY_FONT,
+        cost_row.pack(fill=tk.X)
+        tk.Label(cost_row, text="  费用:", font=OVERLAY_FONT,
                  bg=OVERLAY_BG_COLOR, fg="#aaa").pack(side=tk.LEFT)
-        self.cost_label = tk.Label(cost_row, text="¥0.000000", font=OVERLAY_FONT,
+        self.cost_label = tk.Label(cost_row, text="¥0.0000", font=OVERLAY_FONT,
                                     bg=OVERLAY_BG_COLOR, fg="#ffd54f")
         self.cost_label.pack(side=tk.RIGHT)
 
@@ -112,22 +94,19 @@ class TokenOverlay:
                                      bg=OVERLAY_BG_COLOR, fg="#4fc3f7")
         self.remain_label.pack(side=tk.RIGHT)
 
-        self._sep(c)
-
-        # ── models ──
-        tk.Label(c, text=LBL_MODELS, font=OVERLAY_FONT,
-                 bg=OVERLAY_BG_COLOR, fg=OVERLAY_ACCENT_COLOR).pack(anchor=tk.W, pady=(4, 2))
-        self.model_frame = tk.Frame(c, bg=OVERLAY_BG_COLOR)
-        self.model_frame.pack(fill=tk.X)
+        # balance
+        self.balance_label = tk.Label(c, text="", font=OVERLAY_FONT,
+                                       bg=OVERLAY_BG_COLOR, fg="#4caf50")
+        self.balance_label.pack(anchor=tk.W)
 
         self._sep(c)
 
-        # debug
+        # ── debug / info ──
         self.debug_label = tk.Label(c, text="", font=("Consolas", 8),
                                      bg=OVERLAY_BG_COLOR, fg="#666")
         self.debug_label.pack(anchor=tk.W)
 
-        # api key (collapsible)
+        # api key toggle
         self._api_visible = False
         self.api_toggle = tk.Label(c, text="  + API", font=("Consolas", 8),
                                     bg=OVERLAY_BG_COLOR, fg="#555", cursor="hand2")
@@ -191,59 +170,35 @@ class TokenOverlay:
     def _update(self):
         try:
             t = get_tracker()
-            today = t.get_today_usage()
-            self.today_labels["prompt"].config(text=self._fmt(today["prompt"]))
-            self.today_labels["completion"].config(text=self._fmt(today["completion"]))
-            self.today_labels["total"].config(text=self._fmt(today["total"]))
-            self.cost_label.config(text=f"¥{today['cost']:.4f}")
+            t.update()
 
-            used = t.get_monthly_cost()
-            budget = float(self.budget_var.get() or get_setting("budget"))
-            remain = budget - used
-            color = "#f44336" if remain <= 0 else "#ffd54f" if remain < budget * 0.2 else "#4fc3f7"
-            self.remain_label.config(text=f"剩¥{max(remain,0):.2f}", fg=color)
+            if t.ok():
+                bal = t.get_balance()
+                today = t.get_today_usage()
+                month = t.get_monthly_cost()
 
-            self._update_model_rows(t.get_model_breakdown())
+                self.status_label.config(text=f"余额 ¥{bal}", fg="#4caf50")
+                self.status_dot.itemconfig(self._dot, fill="#4caf50")
+                self.cost_label.config(text=f"¥{today['cost']:.4f}", fg="#ffd54f")
 
-            self.status_label.config(text=t.data_source())
-            self.debug_label.config(
-                text=f"  请求: {t.get_request_count()}  状态: {t.get_last_status()}")
+                budget = float(self.budget_var.get() or get_setting("budget"))
+                remain = budget - month
+                color = "#f44336" if remain <= 0 else "#ffd54f" if remain < budget * 0.2 else "#4fc3f7"
+                self.remain_label.config(text=f"剩¥{max(remain,0):.2f}", fg=color)
+
+                self.balance_label.config(text=f"  余额: ¥{bal}")
+                self.debug_label.config(
+                    text=f"  今日: ¥{today['cost']}  本月: ¥{month}  会话: ¥{t.get_session_spent()}")
+            else:
+                err = t.last_api_error()
+                self.status_label.config(text="API Key 未设置" if not err else f"API 错误", fg="#ff6b6b")
+                self.status_dot.itemconfig(self._dot, fill="#f44336")
+                self.debug_label.config(text=f"  在底部 +API 输入 Key")
         except Exception as e:
             self.debug_label.config(text=f"  ⚠ {e}")
             self.status_dot.itemconfig(self._dot, fill="#f44336")
 
         self.root.after(2000, self._update)
-
-    def _update_model_rows(self, models):
-        for w in self.model_frame.winfo_children():
-            w.destroy()
-        placed = 0
-        for m in models:
-            if m["total"] == 0:
-                continue
-            row = tk.Frame(self.model_frame, bg=OVERLAY_BG_COLOR)
-            row.pack(fill=tk.X)
-            tk.Label(row, text=f"  {m['label']}", font=OVERLAY_FONT,
-                     bg=OVERLAY_BG_COLOR,
-                     fg="#ffd54f" if "pro" in (m["model"] or "") else OVERLAY_ACCENT_COLOR
-                     ).pack(side=tk.LEFT)
-            tk.Label(row, text=f"¥{m['cost']:.4f}", font=OVERLAY_FONT,
-                     bg=OVERLAY_BG_COLOR, fg="#ffd54f").pack(side=tk.RIGHT)
-            tk.Label(row, text=f"{self._fmt(m['total'])}", font=OVERLAY_FONT,
-                     bg=OVERLAY_BG_COLOR, fg=OVERLAY_FG_COLOR
-                     ).pack(side=tk.RIGHT, padx=(0, 6))
-            placed += 1
-        if placed == 0:
-            tk.Label(self.model_frame, text="  暂无", font=OVERLAY_FONT,
-                     bg=OVERLAY_BG_COLOR, fg="#666").pack(anchor=tk.W)
-
-    @staticmethod
-    def _fmt(n):
-        if n >= 1_000_000:
-            return f"{n/1_000_000:.2f}M"
-        if n >= 1_000:
-            return f"{n/1_000:.1f}K"
-        return str(n)
 
     def run(self):
         self.root.mainloop()

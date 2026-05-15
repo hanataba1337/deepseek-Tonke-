@@ -19,10 +19,11 @@ def load() -> dict:
 
 
 def save(data: dict):
-    merged = dict(DEFAULTS)
-    merged.update(data)
+    # Read existing file first so we don't overwrite other saved keys
+    existing = load()
+    existing.update(data)
     with open(_FILE, "w") as f:
-        json.dump(merged, f, indent=2)
+        json.dump(existing, f, indent=2)
 
 
 def get(key: str):
