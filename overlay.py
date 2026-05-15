@@ -65,8 +65,9 @@ class TokenOverlay:
                                      bg=OVERLAY_BG_COLOR, highlightthickness=0)
         self.status_dot.pack(side=tk.LEFT, padx=(0, 6))
         self._dot = self.status_dot.create_oval(1, 1, 9, 9, fill="#4caf50", outline="")
-        tk.Label(sf, text=LBL_STATUS, font=("Consolas", 8),
-                 bg=OVERLAY_BG_COLOR, fg="#4caf50").pack(side=tk.LEFT)
+        self.status_label = tk.Label(sf, text=LBL_STATUS, font=("Consolas", 8),
+                 bg=OVERLAY_BG_COLOR, fg="#4caf50")
+        self.status_label.pack(side=tk.LEFT)
 
         self._sep(c)
 
@@ -126,6 +127,43 @@ class TokenOverlay:
                                      bg=OVERLAY_BG_COLOR, fg="#666")
         self.debug_label.pack(anchor=tk.W)
 
+        # api key (collapsible)
+        self._api_visible = False
+        self.api_toggle = tk.Label(c, text="  + API", font=("Consolas", 8),
+                                    bg=OVERLAY_BG_COLOR, fg="#555", cursor="hand2")
+        self.api_toggle.pack(anchor=tk.W)
+        self.api_toggle.bind("<Button-1>", self._toggle_api)
+
+        self.api_frame = tk.Frame(c, bg=OVERLAY_BG_COLOR)
+        tk.Label(self.api_frame, text="  Key:", font=("Consolas", 8),
+                 bg=OVERLAY_BG_COLOR, fg="#555").pack(side=tk.LEFT)
+        self.api_key_var = tk.StringVar(value=get_setting("api_key") or "")
+        self.api_key_entry = tk.Entry(self.api_frame, textvariable=self.api_key_var,
+                                       font=("Consolas", 8), width=22,
+                                       bg="#16213e", fg="#aaa",
+                                       bd=0, highlightthickness=0,
+                                       relief=tk.FLAT, show="*")
+        self.api_key_entry.pack(side=tk.LEFT, padx=(2, 0))
+        self.api_key_entry.bind("<Return>", self._save_api_key)
+        self.api_key_entry.bind("<FocusOut>", self._save_api_key)
+
+    def _toggle_api(self, event=None):
+        self._api_visible = not self._api_visible
+        if self._api_visible:
+            self.api_frame.pack(fill=tk.X)
+            self.api_toggle.config(text="  - API")
+        else:
+            self.api_frame.pack_forget()
+            self.api_toggle.config(text="  + API")
+
+    def _save_api_key(self, event=None):
+        key = self.api_key_var.get().strip()
+        if key:
+            save_settings({"api_key": key})
+            self.api_key_entry.config(fg="#4caf50")
+        else:
+            self.api_key_entry.config(fg="#888")
+
     def _sep(self, parent):
         tk.Frame(parent, height=1, bg="#2a2a4a").pack(fill=tk.X, pady=4)
 
@@ -167,6 +205,7 @@ class TokenOverlay:
 
             self._update_model_rows(t.get_model_breakdown())
 
+            self.status_label.config(text=t.data_source())
             self.debug_label.config(
                 text=f"  请求: {t.get_request_count()}  状态: {t.get_last_status()}")
         except Exception as e:

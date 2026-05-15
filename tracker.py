@@ -1,13 +1,19 @@
-"""Token usage tracker - reads directly from CC-Switch database."""
+"""Token usage tracker — supports DeepSeek API (preferred) and CC-Switch DB (fallback)."""
 import sqlite3
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from config import PRICING, MODEL_LABELS
+from deepseek_api import get_today_cost as _api_today
+from deepseek_api import get_monthly_cost as _api_month
+from deepseek_api import available as _api_avail
 
 CC_SWITCH_DB = str(Path.home() / ".cc-switch" / "cc-switch.db")
 DEEPSEEK_PROVIDER_ID = "bb3cb8ec-eacc-4e7c-bbc6-fdadbeb231c7"
+
+# Asia/Shanghai timezone (UTC+8) — DeepSeek billing uses Beijing time
+_TZ = timezone(timedelta(hours=8))
 
 
 class UsageTracker:
@@ -24,13 +30,13 @@ class UsageTracker:
             conn.close()
 
     def _midnight_ts(self) -> int:
-        today = datetime.now(timezone.utc).replace(
+        today = datetime.now(_TZ).replace(
             hour=0, minute=0, second=0, microsecond=0
         )
         return int(today.timestamp())
 
     def _month_start_ts(self) -> int:
-        first = datetime.now(timezone.utc).replace(
+        first = datetime.now(_TZ).replace(
             day=1, hour=0, minute=0, second=0, microsecond=0
         )
         return int(first.timestamp())
@@ -41,8 +47,20 @@ class UsageTracker:
         return (prompt / 1_000_000 * pricing["input"] +
                 completion / 1_000_000 * pricing["output"])
 
+    def data_source(self) -> str:
+        return "DeepSeek API" if _api_avail() else "CC-Switch DB"
+
     def get_today_usage(self) -> dict:
-        # Sum per-model costs for accurate pricing
+        # Try API first (accurate cost)
+        api_cost = _api_today()
+        if api_cost is not None:
+            # Also get tokens from DB for display (may be partial)
+            breakdown = self.get_model_breakdown()
+            prompt = sum(m["prompt"] for m in breakdown)
+            completion = sum(m["completion"] for m in breakdown)
+            return {"prompt": prompt, "completion": completion,
+                    "total": prompt + completion, "cost": api_cost}
+        # Fallback: pure DB estimate
         breakdown = self.get_model_breakdown()
         prompt = sum(m["prompt"] for m in breakdown)
         completion = sum(m["completion"] for m in breakdown)
@@ -107,7 +125,9 @@ class UsageTracker:
         return round(cost, 6)
 
     def get_monthly_cost(self) -> float:
-        """Total cost from the 1st of this month to now."""
+        api_cost = _api_month()
+        if api_cost is not None:
+            return api_cost
         ts = self._month_start_ts()
         rows = self._query("""
             SELECT COALESCE(model,'default'), COALESCE(SUM(input_tokens),0),
