@@ -1,6 +1,5 @@
 """Token usage tracker - reads directly from CC-Switch database."""
 import sqlite3
-import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,11 +14,7 @@ class UsageTracker:
     """Reads token usage from CC-Switch's proxy_request_logs."""
 
     def __init__(self):
-        self._lock = threading.Lock()
         self._session_start = int(time.time())
-        self._last_usage = None
-        self._request_count = 0
-        self._last_status = "no requests yet"
 
     def _query(self, sql, params=()):
         conn = sqlite3.connect(CC_SWITCH_DB)
@@ -33,6 +28,12 @@ class UsageTracker:
             hour=0, minute=0, second=0, microsecond=0
         )
         return int(today.timestamp())
+
+    def _month_start_ts(self) -> int:
+        first = datetime.now(timezone.utc).replace(
+            day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+        return int(first.timestamp())
 
     @staticmethod
     def _cost(prompt: int, completion: int, model: str = "default") -> float:
@@ -56,7 +57,7 @@ class UsageTracker:
             SELECT COALESCE(model,'unknown'), COALESCE(SUM(input_tokens),0),
                    COALESCE(SUM(output_tokens),0)
             FROM proxy_request_logs
-            WHERE provider_id = ? AND created_at >= ?
+            WHERE provider_id = ? AND created_at >= ? AND data_source = 'proxy'
             GROUP BY model
             ORDER BY SUM(input_tokens + output_tokens) DESC
         """, (DEEPSEEK_PROVIDER_ID, ts))
@@ -86,15 +87,37 @@ class UsageTracker:
         rows = self._query("""
             SELECT COALESCE(SUM(input_tokens),0), COALESCE(SUM(output_tokens),0)
             FROM proxy_request_logs
-            WHERE provider_id = ? AND created_at >= ?
+            WHERE provider_id = ? AND created_at >= ? AND data_source = 'proxy'
         """, (DEEPSEEK_PROVIDER_ID, self._session_start))
         prompt = rows[0][0]
         completion = rows[0][1]
         return {"prompt": prompt, "completion": completion, "total": prompt + completion}
 
     def get_session_cost(self) -> float:
-        usage = self.get_session_usage()
-        return self._cost(usage["prompt"], usage["completion"])
+        """Sum per-model costs for the session (accurate for mixed model usage)."""
+        ts = self._session_start
+        rows = self._query("""
+            SELECT COALESCE(model,'default'), COALESCE(SUM(input_tokens),0),
+                   COALESCE(SUM(output_tokens),0)
+            FROM proxy_request_logs
+            WHERE provider_id = ? AND created_at >= ? AND data_source = 'proxy'
+            GROUP BY model
+        """, (DEEPSEEK_PROVIDER_ID, ts))
+        cost = sum(self._cost(pin, pout, m) for m, pin, pout in rows)
+        return round(cost, 6)
+
+    def get_monthly_cost(self) -> float:
+        """Total cost from the 1st of this month to now."""
+        ts = self._month_start_ts()
+        rows = self._query("""
+            SELECT COALESCE(model,'default'), COALESCE(SUM(input_tokens),0),
+                   COALESCE(SUM(output_tokens),0)
+            FROM proxy_request_logs
+            WHERE provider_id = ? AND created_at >= ? AND data_source = 'proxy'
+            GROUP BY model
+        """, (DEEPSEEK_PROVIDER_ID, ts))
+        cost = sum(self._cost(pin, pout, m) for m, pin, pout in rows)
+        return round(cost, 6)
 
     def get_last_usage(self) -> dict | None:
         rows = self._query("""
@@ -127,7 +150,7 @@ class UsageTracker:
         rows = self._query("""
             SELECT status_code, error_message
             FROM proxy_request_logs
-            WHERE provider_id = ?
+            WHERE provider_id = ? AND data_source = 'proxy'
             ORDER BY created_at DESC LIMIT 1
         """, (DEEPSEEK_PROVIDER_ID,))
         if not rows:

@@ -7,24 +7,19 @@ from config import (
     OVERLAY_BG_COLOR, OVERLAY_FG_COLOR, OVERLAY_ACCENT_COLOR,
     OVERLAY_FONT, OVERLAY_TITLE_FONT,
 )
+from settings import get as get_setting, save as save_settings
 
-# ── 界面文字 ──
 LBL_TITLE = "  DeepSeek 用量监控"
 LBL_STATUS = "读取 CC-Switch"
 LBL_TODAY = "── 今日 ──"
 LBL_MODELS = "── 模型 ──"
-LBL_SESSION = "── 会话 ──"
-LBL_LAST = "── 最近 ──"
 LBL_COST = "  费用:"
-LBL_WAITING = "  等待中..."
 LBL_INPUT = "  输入:"
 LBL_OUTPUT = "  输出:"
 LBL_TOTAL = "  总计:"
 
 
 class TokenOverlay:
-    """Always-on-top, draggable, semi-transparent overlay widget."""
-
     def __init__(self):
         self.root = tk.Tk()
         self.root.title("DeepSeek Monitor")
@@ -35,8 +30,6 @@ class TokenOverlay:
         self.root.configure(bg=OVERLAY_BG_COLOR)
 
         self._drag_data = {"x": 0, "y": 0}
-        self._model_rows = []  # per-model display rows
-
         self._build_ui()
         self._update()
 
@@ -45,46 +38,45 @@ class TokenOverlay:
                         highlightbackground=OVERLAY_ACCENT_COLOR, highlightthickness=1)
         main.pack(fill=tk.BOTH, expand=True)
 
-        # ── 标题栏（可拖拽） ──
-        title_bar = tk.Frame(main, bg="#16213e", height=28)
-        title_bar.pack(fill=tk.X)
-        title_bar.pack_propagate(False)
+        # ── title bar ──
+        bar = tk.Frame(main, bg="#16213e", height=28)
+        bar.pack(fill=tk.X)
+        bar.pack_propagate(False)
 
-        tk.Label(title_bar, text=LBL_TITLE, font=OVERLAY_TITLE_FONT,
+        tk.Label(bar, text=LBL_TITLE, font=OVERLAY_TITLE_FONT,
                  bg="#16213e", fg=OVERLAY_ACCENT_COLOR).pack(side=tk.LEFT, fill=tk.Y)
 
-        close_btn = tk.Label(title_bar, text=" × ", font=("Consolas", 14, "bold"),
-                             bg="#16213e", fg="#ff6b6b", cursor="hand2")
-        close_btn.pack(side=tk.RIGHT, padx=(0, 4))
-        close_btn.bind("<Button-1>", lambda e: self.root.quit())
+        cb = tk.Label(bar, text=" × ", font=("Consolas", 14, "bold"),
+                      bg="#16213e", fg="#ff6b6b", cursor="hand2")
+        cb.pack(side=tk.RIGHT, padx=(0, 4))
+        cb.bind("<Button-1>", self._close)
 
-        title_bar.bind("<ButtonPress-1>", self._start_drag)
-        title_bar.bind("<B1-Motion>", self._do_drag)
-        close_btn.bind("<ButtonPress-1>", lambda e: None)
+        bar.bind("<ButtonPress-1>", self._start_drag)
+        bar.bind("<B1-Motion>", self._do_drag)
 
-        # ── 内容区域 ──
-        content = tk.Frame(main, bg=OVERLAY_BG_COLOR, padx=12, pady=8)
-        content.pack(fill=tk.BOTH, expand=True)
+        # ── content ──
+        c = tk.Frame(main, bg=OVERLAY_BG_COLOR, padx=12, pady=8)
+        c.pack(fill=tk.BOTH, expand=True)
 
-        # 状态行
-        status_frame = tk.Frame(content, bg=OVERLAY_BG_COLOR)
-        status_frame.pack(fill=tk.X, pady=(0, 6))
-        self.status_dot = tk.Canvas(status_frame, width=10, height=10,
-                                    bg=OVERLAY_BG_COLOR, highlightthickness=0)
+        # status
+        sf = tk.Frame(c, bg=OVERLAY_BG_COLOR)
+        sf.pack(fill=tk.X, pady=(0, 6))
+        self.status_dot = tk.Canvas(sf, width=10, height=10,
+                                     bg=OVERLAY_BG_COLOR, highlightthickness=0)
         self.status_dot.pack(side=tk.LEFT, padx=(0, 6))
         self._dot = self.status_dot.create_oval(1, 1, 9, 9, fill="#4caf50", outline="")
-        tk.Label(status_frame, text=LBL_STATUS, font=("Consolas", 8),
+        tk.Label(sf, text=LBL_STATUS, font=("Consolas", 8),
                  bg=OVERLAY_BG_COLOR, fg="#4caf50").pack(side=tk.LEFT)
 
-        self._add_sep(content)
+        self._sep(c)
 
-        # ── 今日 ──
-        tk.Label(content, text=LBL_TODAY, font=OVERLAY_FONT,
+        # ── today ──
+        tk.Label(c, text=LBL_TODAY, font=OVERLAY_FONT,
                  bg=OVERLAY_BG_COLOR, fg=OVERLAY_ACCENT_COLOR).pack(anchor=tk.W, pady=(4, 2))
 
         self.today_labels = {}
         for key, text in [("prompt", LBL_INPUT), ("completion", LBL_OUTPUT), ("total", LBL_TOTAL)]:
-            row = tk.Frame(content, bg=OVERLAY_BG_COLOR)
+            row = tk.Frame(c, bg=OVERLAY_BG_COLOR)
             row.pack(fill=tk.X)
             tk.Label(row, text=text, font=OVERLAY_FONT,
                      bg=OVERLAY_BG_COLOR, fg="#aaa").pack(side=tk.LEFT)
@@ -93,54 +85,48 @@ class TokenOverlay:
             lbl.pack(side=tk.RIGHT)
             self.today_labels[key] = lbl
 
-        cost_row = tk.Frame(content, bg=OVERLAY_BG_COLOR)
+        cost_row = tk.Frame(c, bg=OVERLAY_BG_COLOR)
         cost_row.pack(fill=tk.X, pady=(2, 0))
         tk.Label(cost_row, text=LBL_COST, font=OVERLAY_FONT,
                  bg=OVERLAY_BG_COLOR, fg="#aaa").pack(side=tk.LEFT)
         self.cost_label = tk.Label(cost_row, text="¥0.000000", font=OVERLAY_FONT,
-                                   bg=OVERLAY_BG_COLOR, fg="#ffd54f")
+                                    bg=OVERLAY_BG_COLOR, fg="#ffd54f")
         self.cost_label.pack(side=tk.RIGHT)
 
-        self._add_sep(content)
+        # budget (editable)
+        budget_row = tk.Frame(c, bg=OVERLAY_BG_COLOR)
+        budget_row.pack(fill=tk.X)
+        tk.Label(budget_row, text="  预算: ¥", font=OVERLAY_FONT,
+                 bg=OVERLAY_BG_COLOR, fg="#aaa").pack(side=tk.LEFT)
+        self.budget_var = tk.StringVar(value=str(get_setting("budget")))
+        self.budget_entry = tk.Entry(budget_row, textvariable=self.budget_var,
+                                      width=7, font=OVERLAY_FONT,
+                                      bg="#16213e", fg=OVERLAY_ACCENT_COLOR,
+                                      bd=0, highlightthickness=0,
+                                      relief=tk.FLAT, insertbackground=OVERLAY_ACCENT_COLOR)
+        self.budget_entry.pack(side=tk.LEFT, padx=(2, 0))
+        self.budget_entry.bind("<Return>", self._save_budget)
+        self.budget_entry.bind("<FocusOut>", self._save_budget)
+        self.remain_label = tk.Label(budget_row, text="剩¥0.00", font=OVERLAY_FONT,
+                                     bg=OVERLAY_BG_COLOR, fg="#4fc3f7")
+        self.remain_label.pack(side=tk.RIGHT)
 
-        # ── 模型用量 ──
-        tk.Label(content, text=LBL_MODELS, font=OVERLAY_FONT,
+        self._sep(c)
+
+        # ── models ──
+        tk.Label(c, text=LBL_MODELS, font=OVERLAY_FONT,
                  bg=OVERLAY_BG_COLOR, fg=OVERLAY_ACCENT_COLOR).pack(anchor=tk.W, pady=(4, 2))
-        self.model_frame = tk.Frame(content, bg=OVERLAY_BG_COLOR)
+        self.model_frame = tk.Frame(c, bg=OVERLAY_BG_COLOR)
         self.model_frame.pack(fill=tk.X)
 
-        self._add_sep(content)
+        self._sep(c)
 
-        # ── 会话 ──
-        tk.Label(content, text=LBL_SESSION, font=OVERLAY_FONT,
-                 bg=OVERLAY_BG_COLOR, fg=OVERLAY_ACCENT_COLOR).pack(anchor=tk.W, pady=(4, 2))
-        self.session_label = tk.Label(content, text="  0 tokens", font=OVERLAY_FONT,
-                                      bg=OVERLAY_BG_COLOR, fg=OVERLAY_FG_COLOR)
-        self.session_label.pack(anchor=tk.W)
-        self.session_cost_label = tk.Label(content, text="  ¥0.000000", font=OVERLAY_FONT,
-                                           bg=OVERLAY_BG_COLOR, fg="#ffd54f")
-        self.session_cost_label.pack(anchor=tk.W)
-
-        self._add_sep(content)
-
-        # ── 最近 ──
-        tk.Label(content, text=LBL_LAST, font=OVERLAY_FONT,
-                 bg=OVERLAY_BG_COLOR, fg=OVERLAY_ACCENT_COLOR).pack(anchor=tk.W, pady=(4, 2))
-        self.last_label = tk.Label(content, text=LBL_WAITING, font=OVERLAY_FONT,
-                                   bg=OVERLAY_BG_COLOR, fg="#888")
-        self.last_label.pack(anchor=tk.W)
-        self.last_cost_label = tk.Label(content, text="", font=OVERLAY_FONT,
-                                        bg=OVERLAY_BG_COLOR, fg="#ffd54f")
-        self.last_cost_label.pack(anchor=tk.W)
-
-        self._add_sep(content)
-
-        # 调试
-        self.debug_label = tk.Label(content, text="", font=("Consolas", 8),
+        # debug
+        self.debug_label = tk.Label(c, text="", font=("Consolas", 8),
                                      bg=OVERLAY_BG_COLOR, fg="#666")
         self.debug_label.pack(anchor=tk.W)
 
-    def _add_sep(self, parent):
+    def _sep(self, parent):
         tk.Frame(parent, height=1, bg="#2a2a4a").pack(fill=tk.X, pady=4)
 
     def _start_drag(self, event):
@@ -151,73 +137,69 @@ class TokenOverlay:
         y = self.root.winfo_y() + event.y - self._drag_data["y"]
         self.root.geometry(f"+{x}+{y}")
 
+    def _close(self, event=None):
+        self.root.quit()
+        return "break"
+
+    def _save_budget(self, event=None):
+        try:
+            v = float(self.budget_var.get())
+            save_settings({"budget": v})
+            self.budget_var.set(f"{v:.2f}")
+            self.budget_entry.config(fg=OVERLAY_ACCENT_COLOR)
+        except ValueError:
+            self.budget_entry.config(fg="#f44336")
+
     def _update(self):
         try:
-            tracker = get_tracker()
-            today = tracker.get_today_usage()
+            t = get_tracker()
+            today = t.get_today_usage()
             self.today_labels["prompt"].config(text=self._fmt(today["prompt"]))
             self.today_labels["completion"].config(text=self._fmt(today["completion"]))
             self.today_labels["total"].config(text=self._fmt(today["total"]))
             self.cost_label.config(text=f"¥{today['cost']:.4f}")
 
-            # Model breakdown
-            models = tracker.get_model_breakdown()
-            self._update_model_rows(models)
+            used = t.get_monthly_cost()
+            budget = float(self.budget_var.get() or get_setting("budget"))
+            remain = budget - used
+            color = "#f44336" if remain <= 0 else "#ffd54f" if remain < budget * 0.2 else "#4fc3f7"
+            self.remain_label.config(text=f"剩¥{max(remain,0):.2f}", fg=color)
 
-            # Session
-            session = tracker.get_session_usage()
-            sc = tracker.get_session_cost()
-            self.session_label.config(
-                text=f"  {session['total']:,} 总  (入:{session['prompt']:,}  出:{session['completion']:,})")
-            self.session_cost_label.config(text=f"  ¥{sc:.6f}")
-
-            # Last
-            last = tracker.get_last_usage()
-            if last:
-                self.last_label.config(
-                    text=f"  {last['label']}  +{last['prompt']:,}入  +{last['completion']:,}出")
-                self.last_label.config(fg=OVERLAY_FG_COLOR)
-                self.last_cost_label.config(text=f"  ¥{last['cost']:.4f}")
+            self._update_model_rows(t.get_model_breakdown())
 
             self.debug_label.config(
-                text=f"  请求: {tracker.get_request_count()}  状态: {tracker.get_last_status()}")
-        except Exception:
-            pass
+                text=f"  请求: {t.get_request_count()}  状态: {t.get_last_status()}")
+        except Exception as e:
+            self.debug_label.config(text=f"  ⚠ {e}")
+            self.status_dot.itemconfig(self._dot, fill="#f44336")
 
         self.root.after(2000, self._update)
 
-    def _update_model_rows(self, models: list):
-        # Destroy old rows
-        for widget in self.model_frame.winfo_children():
-            widget.destroy()
-
+    def _update_model_rows(self, models):
+        for w in self.model_frame.winfo_children():
+            w.destroy()
         placed = 0
         for m in models:
             if m["total"] == 0:
                 continue
             row = tk.Frame(self.model_frame, bg=OVERLAY_BG_COLOR)
             row.pack(fill=tk.X)
-            # label + token count on left, cost on right
             tk.Label(row, text=f"  {m['label']}", font=OVERLAY_FONT,
-                     bg=OVERLAY_BG_COLOR, fg=self._model_color(m["model"])).pack(side=tk.LEFT)
+                     bg=OVERLAY_BG_COLOR,
+                     fg="#ffd54f" if "pro" in (m["model"] or "") else OVERLAY_ACCENT_COLOR
+                     ).pack(side=tk.LEFT)
             tk.Label(row, text=f"¥{m['cost']:.4f}", font=OVERLAY_FONT,
                      bg=OVERLAY_BG_COLOR, fg="#ffd54f").pack(side=tk.RIGHT)
             tk.Label(row, text=f"{self._fmt(m['total'])}", font=OVERLAY_FONT,
-                     bg=OVERLAY_BG_COLOR, fg=OVERLAY_FG_COLOR).pack(side=tk.RIGHT, padx=(0, 6))
+                     bg=OVERLAY_BG_COLOR, fg=OVERLAY_FG_COLOR
+                     ).pack(side=tk.RIGHT, padx=(0, 6))
             placed += 1
-
         if placed == 0:
             tk.Label(self.model_frame, text="  暂无", font=OVERLAY_FONT,
                      bg=OVERLAY_BG_COLOR, fg="#666").pack(anchor=tk.W)
 
     @staticmethod
-    def _model_color(model: str) -> str:
-        if "pro" in (model or ""):
-            return "#ffd54f"
-        return "#4fc3f7"
-
-    @staticmethod
-    def _fmt(n: int) -> str:
+    def _fmt(n):
         if n >= 1_000_000:
             return f"{n/1_000_000:.2f}M"
         if n >= 1_000:

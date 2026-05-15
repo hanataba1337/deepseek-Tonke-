@@ -1,2 +1,1 @@
 # No external dependencies required.
-# Uses only Python standard library: tkinter, sqlite3, threading, time, datetime.

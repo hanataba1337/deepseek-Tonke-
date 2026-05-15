@@ -11,3 +11,9 @@ build/
 .env
 .venv
 venv/
+
+# User settings (generated at runtime)
+settings.json
+
+# Build artifacts
+*.spec
