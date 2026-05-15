@@ -1,22 +1,27 @@
 """Configuration for DeepSeek Token Monitor."""
 
+# Cache hit rate (95%–99.5% per DeepSeek official)
+# Used to compute effective input price = cache_hit × hit_rate + cache_miss × (1 − hit_rate)
+# Lower value = conservative (slightly higher estimated cost)
+CACHE_HIT_RATE = 0.95
+
 # DeepSeek pricing per 1M tokens (RMB ¥)
 # Based on official pricing: https://api-docs.deepseek.com/quick_start/pricing
-# USD → RMB exchange rate: ~7.2
-PRICING = {
-    "deepseek-v4-flash":   {"input": 1.0, "output": 2.0},
-    "deepseek-v4-pro":     {"input": 3.0, "output": 6.0},
-    "deepseek-chat":       {"input": 1.0, "output": 2.0},
-    "deepseek-reasoner":   {"input": 3.1, "output": 6.3},
-    "deepseek-v3":         {"input": 1.0, "output": 2.0},
-    "deepseek-r1":         {"input": 3.1, "output": 6.3},
-    "default":             {"input": 1.0, "output": 2.0},
+_PRICES = {
+    "deepseek-v4-flash":   {"cache_input": 0.02, "input": 1.0, "output": 2.0},
+    "deepseek-v4-pro":     {"cache_input": 0.025, "input": 3.0, "output": 6.0},
+    "deepseek-chat":       {"cache_input": 0.02, "input": 1.0, "output": 2.0},
+    "deepseek-reasoner":   {"cache_input": 0.025, "input": 3.1, "output": 6.3},
+    "deepseek-v3":         {"cache_input": 0.02, "input": 1.0, "output": 2.0},
+    "deepseek-r1":         {"cache_input": 0.025, "input": 3.1, "output": 6.3},
+    "default":             {"cache_input": 0.02, "input": 1.0, "output": 2.0},
 }
 
-# Cache-hit pricing (for reference — CC-Switch DB does not record cache status)
-#   V4-Flash: input(cache hit) ¥0.02 / input(cache miss) ¥1.00 / output ¥2.00
-#   V4-Pro:   input(cache hit) ¥0.025 / input(cache miss) ¥3.00 / output ¥6.00
-# The PRICING dict above uses cache-miss (non-cached) rates as a conservative estimate.
+# Effective prices after applying cache hit rate
+PRICING = {}
+for _m, _p in _PRICES.items():
+    eff_input = _p["cache_input"] * CACHE_HIT_RATE + _p["input"] * (1 - CACHE_HIT_RATE)
+    PRICING[_m] = {"input": round(eff_input, 4), "output": _p["output"]}
 
 # Model display names (friendly labels)
 MODEL_LABELS = {
